@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>GraphQL Data Table</title>
+  <style>
+    /* Add this inside a <style> tag within your <head> section */
+    <style>body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f5f5f5;
+    }
+
+    h1 {
+      text-align: center;
+      margin-top: 20px;
+    }
+
+    table {
+      width: 80%;
+      margin: 20px auto;
+      border-collapse: collapse;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+      background-color: #fff;
+    }
+
+    th,
+    td {
+      padding: 12px 15px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #333;
+      color: #fff;
+    }
+
+    tr:nth-child(even) {
+      background-color: #f2f2f2;
+    }
+
+    tr:hover {
+      background-color: #ddd;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: rgba(0, 0, 0, 0.7);
+    }
+
+    .modal-content {
+      background-color: #fff;
+      margin: 15% auto;
+      padding: 20px;
+      border: 1px solid #888;
+      width: 80%;
+    }
+
+    .modal-header {
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+
+    .modal-close {
+      float: right;
+      cursor: pointer;
+    }
+  </style>
+
+  </style>
+</head>
+
+<body>
+  <h1>Repository Data</h1>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Size</th>
+        <th>Owner</th>
+      </tr>
+    </thead>
+    <tbody id="data-table-body">
+    </tbody>
+  </table>
+  <div id="myModal" class="modal">
+    <div class="modal-content">
+      <span class="modal-close" id="closeModal">&times;</span>
+      <h2 class="modal-header">Repository Details</h2>
+      <table id="modalTable">
+      </table>
+    </div>
+  </div>
+  <script>
+    function displayRepositoryDetailsModal(details) {
+      const modal = document.getElementById("myModal");
+      const modalTable = document.getElementById("modalTable");
+      const closeModalButton = document.getElementById("closeModal");
+
+      modalTable.innerHTML = '';
+
+      const headerRow = document.createElement("tr");
+      for (const key in details) {
+        if (details.hasOwnProperty(key)) {
+          const headerCell = document.createElement("th");
+          headerCell.textContent = key;
+          headerRow.appendChild(headerCell);
+        }
+      }
+      modalTable.appendChild(headerRow);
+
+      const dataRow = document.createElement("tr");
+      for (const key in details) {
+        if (details.hasOwnProperty(key)) {
+          const dataCell = document.createElement("td");
+          if (key == 'ymlFileContent' && details[key]) {
+            dataCell.innerHTML = `<a target="_blank" href=${details[key]}> ${details[key]}  </a>`
+          } else {
+            dataCell.textContent = details[key];
+          }
+          dataRow.appendChild(dataCell);
+        }
+      }
+      modalTable.appendChild(dataRow);
+
+      modal.style.display = "block";
+
+      closeModalButton.onclick = function () {
+        modal.style.display = "none";
+      }
+
+      window.onclick = function (event) {
+        if (event.target == modal) {
+          modal.style.display = "none";
+        }
+      }
+    }
+    async function fetchData() {
+      let token = '';
+
+      while (!token) {
+        token = prompt('Please enter your GitHub token:');
+      }
+      const apiUrl = 'http://localhost:4000/';
+
+      const query = `
+                {
+                    repositories(token: "${token}") {
+                        name
+                        size
+                        owner
+                    }
+                }
+            `;
+
+      try {
+        const data = JSON.stringify({
+          query: `
+                {
+                    repositories(token: "${token}") {
+                        name
+                        size
+                        owner
+                    }
+                }
+            `,
+        });
+
+        const response = await fetch(
+          apiUrl,
+          {
+            method: 'post',
+            body: data,
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': data.length,
+              'User-Agent': 'Node',
+            },
+          }
+        );
+
+        const resData = await response.json();
+        async function fetchRepositoryDetails(repoName, owner) {
+          const query = `
+        {
+            repositoryDetails(token: "${token}", name: "${repoName}", owner: "${owner}") {
+                name,
+                size,
+                owner,
+                isPrivate,
+                numFiles,
+                ymlFileContent,
+            }
+        }
+    `;
+
+          try {
+            const response = await fetch(apiUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ query }),
+            });
+
+            const data = await response.json();
+            return data.data.repositoryDetails;
+          } catch (error) {
+            console.error("Error fetching repository details:", error);
+            return null;
+          }
+        }
+
+        const repositories = resData.data.repositories;
+        const tableBody = document.getElementById("data-table-body");
+        repositories.forEach(async (repo) => {
+          const row = document.createElement("tr");
+          const nameCell = document.createElement("td");
+          const sizeCell = document.createElement("td");
+          const ownerCell = document.createElement("td");
+
+
+          const nameLink = document.createElement("a");
+          nameLink.href = "#";
+          nameLink.textContent = repo.name;
+
+          nameLink.addEventListener("click", async (event) => {
+            event.preventDefault();
+            const details = await fetchRepositoryDetails(repo.name, repo.owner);
+            if (details) {
+              displayRepositoryDetailsModal(details);
+            }
+          });
+
+          nameCell.appendChild(nameLink);
+          sizeCell.textContent = repo.size;
+          ownerCell.textContent = repo.owner;
+
+          row.appendChild(nameCell);
+          row.appendChild(sizeCell);
+          row.appendChild(ownerCell);
+
+          tableBody.appendChild(row);
+        });
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      }
+    }
+
+    fetchData();
+  </script>
+</body>
+
+</html>
